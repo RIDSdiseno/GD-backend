@@ -1,0 +1,191 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * ------------------- Catálogos / Dimensiones -------------------
+ */
+
+model Marca {
+  id              Int            @id @default(autoincrement()) @map("id_marca")
+  nombre          String         @unique
+  usuariosDefault Usuario[]      @relation("Usuario.defaultMarca")
+  usuarios        UsuarioMarca[]
+  leads           Lead[]
+
+  @@map("marcas")
+}
+
+model Segmentacion {
+  id     Int    @id @default(autoincrement()) @map("id_segmentacion")
+  nombre String
+  leads  Lead[]
+
+  @@map("segmentacion")
+}
+
+model Estado {
+  id          Int     @id @default(autoincrement()) @map("id_estado")
+  nombre      String
+  descripcion String?
+  leads       Lead[]
+
+  @@map("estados")
+}
+
+model TipoCliente {
+  id          Int     @id @default(autoincrement()) @map("id_tipo_cliente")
+  nombre      String
+  descripcion String?
+  leads       Lead[]
+
+  @@map("tipo_cliente")
+}
+
+model Categoria {
+  id     Int    @id @default(autoincrement()) @map("id_categoria")
+  nombre String
+  leads  Lead[]
+
+  @@map("categorias")
+}
+
+model Comuna {
+  id     Int    @id @default(autoincrement()) @map("id_comuna")
+  nombre String @unique
+  leads  Lead[]
+
+  @@map("comunas")
+}
+
+/**
+ * ---------------------- Usuarios y m:n Marcas ----------------------
+ */
+
+model Usuario {
+  id            Int     @id @default(autoincrement()) @map("id_usuario")
+  nombreUsuario String  @map("nombre_usuario")
+  email         String  @unique
+  passwordHash  String  @map("password_hash")
+  nivel         String  @default("USER") // Roles: "ADMIN", "SUB_ADMIN", "USER"
+  status        Boolean @default(true)
+
+  // Marca por defecto (columna directa en USUARIOS)
+  marcaId Int?   @map("id_marca")
+  marca   Marca? @relation("Usuario.defaultMarca", fields: [marcaId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relación m:n adicional
+  marcas UsuarioMarca[]
+
+  // Leads asignados a este usuario (opcional)
+  leadsAsignados Lead[]
+
+  // relación con refresh tokens
+  refreshTokens RefreshToken[]
+
+  @@map("usuarios")
+}
+
+model RefreshToken {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  rtHash            String // SHA-256 del RT (hex) ⬅️ lookup determinístico
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime? // si fue rotado o forzado logout
+  replacedByTokenId Int? // rotación: apunta al nuevo RT
+  userAgent         String? // opcional: auditoría
+  ip                String? // opcional: auditoría
+
+  user Usuario @relation(fields: [userId], references: [id])
+
+  @@index([rtHash]) // lookup rápido por hash del RT
+  @@index([userId])
+}
+
+model UsuarioMarca {
+  usuarioId Int
+  marcaId   Int
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  marca     Marca   @relation(fields: [marcaId], references: [id])
+
+  @@id([usuarioId, marcaId])
+  @@map("usuario_marcas")
+}
+
+/**
+ * ---------------------------- Leads ----------------------------
+ */
+
+model Lead {
+  id Int @id @default(autoincrement()) @map("id_lead")
+
+  // Campos de tu lista (normalizados a snake_case)
+  codigoCliente String    @unique @map("codigo_cliente")
+  fechaIngreso  DateTime? @map("fecha_ingreso")
+
+  // Marca -> relación con MARCAS (en vez de texto libre)
+  marcaId Int?   @map("id_marca")
+  marca   Marca? @relation(fields: [marcaId], references: [id])
+
+  nombreCliente String     @map("nombre_cliente")
+  categoriaId   Int?       @map("id_categoria")
+  categoria     Categoria? @relation(fields: [categoriaId], references: [id])
+
+  tipoClienteId Int?         @map("id_tipo_cliente")
+  tipoCliente   TipoCliente? @relation(fields: [tipoClienteId], references: [id])
+
+  plataforma String?
+
+  fechaEvento DateTime? @map("fecha_evento")
+  dia         Int?
+  mes         Int?
+  semana      Int?
+  anio        Int?      @map("anio")
+
+  comunaId Int?    @map("id_comuna")
+  comuna   Comuna? @relation(fields: [comunaId], references: [id])
+
+  telefono  String?  @db.VarChar(20)
+  conversar Boolean?
+
+  email         String?  @db.VarChar(255)
+  montoCotizado Decimal? @map("monto_cotizado") @db.Decimal(14, 2)
+
+  estadoId Int?    @map("id_estado")
+  estado   Estado? @relation(fields: [estadoId], references: [id])
+
+  ultimoCambio DateTime? @map("ultimo_cambio")
+
+  seguimiento1     String?   @map("seguimiento_1")
+  fechaSeguimiento DateTime? @map("fecha_seguimiento")
+  motivoEvento     String?   @map("motivo_evento")
+
+  nroCotizacion String? @unique @map("nro_cotizacion")
+
+  // Opcionales: quién lo creó/asignó + segmentación
+  usuarioId Int?     @map("id_usuario")
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  segmentacionId Int?          @map("id_segmentacion")
+  segmentacion   Segmentacion? @relation(fields: [segmentacionId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([fechaIngreso])
+  @@index([fechaEvento])
+  @@index([estadoId])
+  @@index([comunaId])
+  @@index([marcaId])
+  @@map("leads")
+}
