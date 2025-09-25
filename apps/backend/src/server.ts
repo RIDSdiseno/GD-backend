@@ -1,12 +1,13 @@
 // src/server.ts
 import http from "http";
-import app from "./app.js";              // 👈 tu app Express
+import app from "./app.js";
 import { prisma } from "./lib/prisma.js";
 
+// Render te da PORT. En local usa 4000 como fallback.
 const PORT = Number(process.env.PORT ?? 4000);
-const HOST = process.env.HOST ?? "localhost";
+// Siempre bindea a 0.0.0.0 para que Render detecte el puerto
+const HOST = process.env.HOST ?? "0.0.0.0";
 
-// Crear servidor HTTP
 const server: http.Server = app.listen(PORT, HOST, () => {
   console.log(`🚀 API escuchando en http://${HOST}:${PORT}`);
 });
@@ -26,19 +27,14 @@ async function shutdown(signal: string) {
     process.exit(0);
   });
 
-  // Forzar salida si tarda > 10s
   setTimeout(() => {
     console.error("⏰ Forzando cierre por timeout");
     process.exit(1);
   }, 10_000).unref();
 }
 
-// ==== Captura de señales ====
-["SIGINT", "SIGTERM"].forEach((sig) =>
-  process.on(sig, () => void shutdown(sig))
-);
+["SIGINT", "SIGTERM"].forEach((sig) => process.on(sig, () => void shutdown(sig)));
 
-// ==== Manejo de errores globales ====
 process.on("uncaughtException", (err) => {
   console.error("💥 uncaughtException:", err);
   void shutdown("uncaughtException");
