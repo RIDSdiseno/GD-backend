@@ -1,16 +1,17 @@
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
+// src/middlewares/role.middleware.ts
+import type { Request, Response, NextFunction } from "express";
+import type { Nivel } from "../lib/jwt.js";
 
 /**
- * Middleware para autorizar solo ciertos roles (por ejemplo: "ADMIN", "SUB_ADMIN")
+ * Middleware de autorización por rol.
+ * Ejemplo: requireRole(["ADMIN", "SUB_ADMIN"])
  */
-export const authorizeRoles = (...rolesPermitidos: string[]): RequestHandler => {
+export function requireRole(roles: Nivel[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const nivel = req.user?.nivel;
-
-    if (!nivel || !rolesPermitidos.includes(nivel)) {
-      return res.status(403).json({ error: "Acceso denegado: rol insuficiente" });
+    if (!nivel || !roles.includes(nivel)) {
+      return res.status(403).json({ error: "No autorizado" });
     }
-
-    return next();
+    next();
   };
-};
+}

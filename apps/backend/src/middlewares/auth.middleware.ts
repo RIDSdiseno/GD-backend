@@ -1,44 +1,15 @@
 // src/middleware/auth.middleware.ts
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
+import { JWT_SECRET, toNivel, type DecodedAny, type JwtPayload } from "../lib/jwt.js";
 
-export type AuthJwtPayload = {
-  id: number;
-  email: string;
-  nivel: string;
-  isAdmin: boolean;
-  nombreUsuario: string;
-  iat?: number;
-  exp?: number;
-};
-
-// ⚠️ Asegúrate de definir JWT_SECRET en tu .env (Railway o local)
-// Nunca uses "dev_secret" en producción
-const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("❌ JWT_SECRET no está definido en variables de entorno");
-  process.exit(1); // Forzamos fallo al arrancar
+  process.exit(1);
 }
 
-// Extendemos Express.Request para incluir `user` y `token`
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthJwtPayload;
-      token?: string;
-    }
-  }
-}
-
-/**
- * Middleware principal para proteger rutas con Access Token.
- * - Requiere header: Authorization: Bearer <token>
- * - Valida firma y expiración del token
- * - Inyecta `req.user` y `req.token`
- */
 export const authGuard: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers?.authorization;
-
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "No autenticado (falta token)" });
   }
@@ -46,12 +17,20 @@ export const authGuard: RequestHandler = (req: Request, res: Response, next: Nex
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthJwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as DecodedAny;
 
-    // Inyectar en req
+    // Normaliza y valida tipos
+    const nivel = toNivel(decoded.nivel);
+    const payload: JwtPayload = {
+      id: Number(decoded.id),
+      email: String(decoded.email),
+      nivel,
+      isAdmin: Boolean(decoded.isAdmin ?? (nivel === "ADMIN")),
+      nombreUsuario: String(decoded.nombreUsuario ?? ""),
+    };
+
     req.user = payload;
     req.token = token;
-
     return next();
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {
@@ -64,21 +43,23 @@ export const authGuard: RequestHandler = (req: Request, res: Response, next: Nex
   }
 };
 
-/**
- * Variante opcional: authGuardOptional
- * - Si hay token válido lo decodifica y lo inyecta
- * - Si no hay token, deja pasar como anónimo
- */
-export const authGuardOptional: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
+export const authGuardOptional: RequestHandler = (req, _res, next) => {
   const authHeader = req.headers?.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     try {
-      const payload = jwt.verify(token, JWT_SECRET) as AuthJwtPayload;
-      req.user = payload;
+      const decoded = jwt.verify(token, JWT_SECRET) as DecodedAny;
+      const nivel = toNivel(decoded.nivel);
+      req.user = {
+        id: Number(decoded.id),
+        email: String(decoded.email),
+        nivel,
+        isAdmin: Boolean(decoded.isAdmin ?? (nivel === "ADMIN")),
+        nombreUsuario: String(decoded.nombreUsuario ?? ""),
+      };
       req.token = token;
     } catch {
-      // ignoramos errores, sigue como anónimo
+      // anónimo si falla
     }
   }
   return next();

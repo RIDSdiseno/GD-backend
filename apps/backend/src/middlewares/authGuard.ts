@@ -1,67 +1,23 @@
-// src/middlewares/authGuard.ts
-import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { verifyAccessToken } from "../lib/jwt.js";
+import type { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import { JWT_SECRET, type JwtPayload } from "../lib/jwt.js";
 
-// Si quieres tipar lo que lleva el JWT:
-export type AuthJwtPayload = {
-  id: number;
-  email: string;
-  nivel: string;
-  isAdmin: boolean;
-  nombreUsuario: string;
-  iat?: number;
-  exp?: number;
-};
-
-// Extiende Express.Request para tener req.user (opcional pero útil)
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthJwtPayload;
-      token?: string;
-    }
+declare module "express-serve-static-core" {
+  interface Request {
+    user?: JwtPayload;
   }
 }
 
-/**
- * Middleware que exige Access Token en Authorization: Bearer <token>
- * Valida firma/expiración y coloca el payload en req.user
- */
-export const authGuard: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
+export function authGuard(req: Request, res: Response, next: NextFunction) {
   const h = req.headers.authorization;
-  if (!h || !h.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Sin token de acceso" });
-  }
-
+  if (!h?.startsWith("Bearer ")) return res.status(401).json({ error: "Falta token" });
   const token = h.slice(7);
 
   try {
-    const payload = verifyAccessToken(token) as AuthJwtPayload;
+    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = payload;
-    req.token = token;
-    return next();
+    next();
   } catch {
     return res.status(401).json({ error: "Token inválido o expirado" });
   }
-};
-
-/**
- * Variante opcional: deja pasar sin token, pero si existe y es válido, rellena req.user.
- * Útil para endpoints públicos con info adicional si el usuario está logueado.
- */
-export const authGuardOptional: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
-  const h = req.headers.authorization;
-  if (h && h.startsWith("Bearer ")) {
-    const token = h.slice(7);
-    try {
-      const payload = verifyAccessToken(token) as AuthJwtPayload;
-      req.user = payload;
-      req.token = token;
-    } catch {
-      // ignoramos errores, sigue como anónimo
-    }
-  }
-  return next();
-};
-
-export default authGuard;
+}

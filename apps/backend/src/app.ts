@@ -1,25 +1,38 @@
-// src/app.ts
-import express from 'express';
-import cors from 'cors';
-import morgan from 'morgan';
-import cookieParser from 'cookie-parser';           // 👈
-import routes from './routes.js';
-import { env } from './config/env.js';
-import { errorHandler } from './middlewares/error.js';
+import express from "express";
+import cors, { type CorsOptions } from "cors";
+import cookieParser from "cookie-parser";
+import routes from "./routes.js"; // 👈 tu archivo routes.ts compila a routes.js
+import { env } from "./config/env.js";
 
-export const app = express();
+const app = express();
 
-app.use(cors({
-  origin: env.CORS_ORIGIN,
-  credentials: true,                                // 👈 si consumirás desde navegador
-}));
-app.use(cookieParser());                             // 👈 DEBE ir antes de las rutas
+// Si usas proxy/NGINX/Vercel/Render
+app.set("trust proxy", 1);
+
+// —— CORS con lista desde .env (CORS_ORIGIN puede tener varios, separados por coma)
+const corsOptions: CorsOptions = {
+  origin(origin, cb) {
+    // Permite healthchecks/curl sin Origin y valida los orígenes configurados
+    if (!origin) return cb(null, true);
+    if (env.CORS_ORIGIN.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS bloqueado para origen: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 600,
+};
+app.use(cors(corsOptions));
+// (opcional, pero útil para algunos clientes)
+
+// —— Parsers
+app.use(cookieParser());
 app.use(express.json());
-app.use(morgan('dev'));
 
-app.use('/api', routes);                             // tus rutas viven bajo /api
+// —— Health
+app.get("/health", (_req, res) => res.json({ ok: true, env: env.NODE_ENV }));
 
-// debug opcional de cookies:
-app.get('/debug/cookies', (req, res) => res.json({ cookies: (req as any).cookies }));
+// —— Rutas de la API
+app.use("/api", routes);
 
-app.use(errorHandler);
+export default app;
