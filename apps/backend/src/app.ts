@@ -56,4 +56,22 @@ app.get("/health", (_req, res) =>
 // API
 app.use("/api", routes);
 
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("💥 Error:", {
+    path: req.path,
+    method: req.method,
+    origin: req.headers.origin,
+    message: err?.message,
+    stack: err?.stack,
+    code: err?.code,           // Prisma codes (P100x, P2002, etc)
+    name: err?.name,
+  });
+
+  const status = err?.status ?? 500;
+  res.status(status).json({
+    message: err?.message ?? "Internal Server Error",
+    code: err?.code ?? "INTERNAL_ERROR",
+  });
+});
+
 export default app;
