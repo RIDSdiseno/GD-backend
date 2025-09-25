@@ -28,7 +28,6 @@ const corsOptions: CorsOptions = {
 
 app.use(cors(corsOptions));
 // Responder explícitamente preflights
-app.options("*", cors(corsOptions));
 
 // --- Parsers
 app.use(cookieParser());
