@@ -1,34 +1,31 @@
 // app.ts
-import express from "express";
+import express, { type RequestHandler } from "express";
 import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import routes from "./routes.js";
-import { env } from "./config/env.js"; // exporta CORS_ORIGIN como string[]
+import { env } from "./config/env.js";
 
 const app = express();
 app.set("trust proxy", 1);
 
-// --- allowed origins (string[])
+// Orígenes permitidos (ya string[])
 const allowedOrigins = (env.CORS_ORIGIN ?? [])
   .map(o => o.trim().replace(/\/$/, "")) // sin trailing slash
   .filter(Boolean);
 
-// DEBUG (quítalo luego)
 console.log("CORS allowed origins:", allowedOrigins);
 
-// --- CORS
+// CORS options con returns explícitos (TS7030-safe)
 const corsOptions: CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // healthchecks/curl/Postman
+    if (!origin) { cb(null, true); return; }
     const norm = origin.replace(/\/$/, "");
-    if (allowedOrigins.includes(norm)) return cb(null, true);
+    if (allowedOrigins.includes(norm)) { cb(null, true); return; }
 
-    // opcional: permitir deploy previews de Netlify
-    if (/^https:\/\/deploy-preview-\d+--crmgdiamond\.netlify\.app$/.test(norm)) {
-      return cb(null, true);
-    }
+    // (opcional) permitir deploy previews de Netlify
+    // if (/^https:\/\/deploy-preview-\d+--crmgdiamond\.netlify\.app$/.test(norm)) { cb(null, true); return; }
 
-    return cb(new Error(`CORS bloqueado para origen: ${origin}`));
+    cb(new Error(`CORS bloqueado para origen: ${origin}`)); return;
   },
   credentials: true, // déjalo true solo si usas cookies httpOnly
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -38,8 +35,15 @@ const corsOptions: CorsOptions = {
 
 app.use(cors(corsOptions));
 
-// ✅ Express 5: el comodín debe iniciar con "/"
-app.options("/(.*)", cors(corsOptions));
+// Preflight handler tipado y con returns (TS7030-safe)
+const handlePreflight: RequestHandler = (req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  return next();
+};
+app.use(handlePreflight);
 
 app.use(cookieParser());
 app.use(express.json());
