@@ -6,7 +6,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL") // se conecta al pool (6543)
-  directUrl = env("DIRECT_URL")   // conexión directa (5432) para migraciones
 }
 /**
  * ------------------- Catálogos / Dimensiones -------------------
