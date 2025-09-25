@@ -2,43 +2,61 @@ import express from "express";
 import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import routes from "./routes.js";
-import { env } from "./config/env.js"; // asegúrate que esta ruta exista tras compilar
+import { env } from "./config/env.js";
 
 const app = express();
-
-// Detrás de proxy (Render/NGINX/Heroku)
 app.set("trust proxy", 1);
 
-// --- CORS: ya tienes CORS_ORIGIN como string[]
-const allowedOrigins: string[] = env.CORS_ORIGIN ?? [];
+// --- LOG para diagnosticar CORS (quítalo luego)
+app.use((req, _res, next) => {
+  if (req.method === "OPTIONS" || req.path === "/health") {
+    console.log("CORS preflight / health:", {
+      origin: req.headers.origin,
+      method: req.method,
+      path: req.path,
+    });
+  }
+  next();
+});
 
-// Si usas cookies HTTP-only, deja credentials: true.
-// Si NO usas cookies y sólo usas Authorization: Bearer, puedes poner credentials: false.
+// --- Lista final de orígenes permitidos
+const allowedOrigins: string[] = env.CORS_ORIGIN ?? [];
+// Si quieres permitir previews de Netlify, añade este patrón cuando confirmemos:
+// e.g. https://deploy-preview-123--crmgdiamond.netlify.app (ver más abajo)
+
 const corsOptions: CorsOptions = {
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // healthchecks / curl sin Origin
+  origin(origin, cb) {
+    // Permitir requests sin Origin (healthchecks, curl, Postman)
+    if (!origin) return cb(null, true);
+
+    // match exacto del origin
     if (allowedOrigins.includes(origin)) return cb(null, true);
+
+    // (opcional) permitir previews de Netlify:
+    // if (/^https:\/\/deploy-preview-\d+--crmgdiamond\.netlify\.app$/.test(origin)) {
+    //   return cb(null, true);
+    // }
+
     return cb(new Error(`CORS bloqueado para origen: ${origin}`));
   },
-  credentials: true,
+  credentials: true, // true si usas cookies httpOnly; si NO usas cookies, puedes dejar false
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   maxAge: 600,
 };
 
 app.use(cors(corsOptions));
-// Responder explícitamente preflights
+// Express 5: usar "(.*)" para catch-all OPTIONS (no "*")
+app.options("(.*)", cors(corsOptions));
 
-// --- Parsers
 app.use(cookieParser());
 app.use(express.json());
 
-// --- Health
 app.get("/health", (_req, res) =>
   res.json({ ok: true, env: env.NODE_ENV, origins: allowedOrigins })
 );
 
-// --- Rutas API (todo cuelga de /api)
+// OJO: todo cuelga de /api
 app.use("/api", routes);
 
 export default app;
