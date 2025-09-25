@@ -1,62 +1,55 @@
+// app.ts
 import express from "express";
 import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import routes from "./routes.js";
-import { env } from "./config/env.js";
+import { env } from "./config/env.js"; // exporta CORS_ORIGIN como string[]
 
 const app = express();
 app.set("trust proxy", 1);
 
-// --- LOG para diagnosticar CORS (quítalo luego)
-app.use((req, _res, next) => {
-  if (req.method === "OPTIONS" || req.path === "/health") {
-    console.log("CORS preflight / health:", {
-      origin: req.headers.origin,
-      method: req.method,
-      path: req.path,
-    });
-  }
-  next();
-});
+// --- allowed origins (string[])
+const allowedOrigins = (env.CORS_ORIGIN ?? [])
+  .map(o => o.trim().replace(/\/$/, "")) // sin trailing slash
+  .filter(Boolean);
 
-// --- Lista final de orígenes permitidos
-const allowedOrigins: string[] = env.CORS_ORIGIN ?? [];
-// Si quieres permitir previews de Netlify, añade este patrón cuando confirmemos:
-// e.g. https://deploy-preview-123--crmgdiamond.netlify.app (ver más abajo)
+// DEBUG (quítalo luego)
+console.log("CORS allowed origins:", allowedOrigins);
 
+// --- CORS
 const corsOptions: CorsOptions = {
   origin(origin, cb) {
-    // Permitir requests sin Origin (healthchecks, curl, Postman)
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true); // healthchecks/curl/Postman
+    const norm = origin.replace(/\/$/, "");
+    if (allowedOrigins.includes(norm)) return cb(null, true);
 
-    // match exacto del origin
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-
-    // (opcional) permitir previews de Netlify:
-    // if (/^https:\/\/deploy-preview-\d+--crmgdiamond\.netlify\.app$/.test(origin)) {
-    //   return cb(null, true);
-    // }
+    // opcional: permitir deploy previews de Netlify
+    if (/^https:\/\/deploy-preview-\d+--crmgdiamond\.netlify\.app$/.test(norm)) {
+      return cb(null, true);
+    }
 
     return cb(new Error(`CORS bloqueado para origen: ${origin}`));
   },
-  credentials: true, // true si usas cookies httpOnly; si NO usas cookies, puedes dejar false
+  credentials: true, // déjalo true solo si usas cookies httpOnly
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   maxAge: 600,
 };
 
 app.use(cors(corsOptions));
-// Express 5: usar "(.*)" para catch-all OPTIONS (no "*")
-app.options("(.*)", cors(corsOptions));
+
+// ✅ Express 5: el comodín debe iniciar con "/"
+app.options("/(.*)", cors(corsOptions));
 
 app.use(cookieParser());
 app.use(express.json());
 
+// Health
 app.get("/health", (_req, res) =>
   res.json({ ok: true, env: env.NODE_ENV, origins: allowedOrigins })
 );
 
-// OJO: todo cuelga de /api
+// API
 app.use("/api", routes);
 
 export default app;
